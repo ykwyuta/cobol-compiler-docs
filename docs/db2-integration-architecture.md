@@ -96,91 +96,90 @@ Db2本体のアクセスはC言語CLIで行われますが、**トランザク�
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Program as COBOL業務プログラム
-    participant Bridge as C言語ランタイム (db2sql.c)
-    participant CLI as IBM Db2 CLI / ODBC Driver
-    participant Db2 as Db2 Community Edition (サーバー)
-    participant CICS as Rust CICS ホスト (cobcics)
+    actor Program as COBOLプログラム
+    participant Bridge as Cランタイム db2sql
+    participant CLI as IBM Db2 CLI
+    participant Db2 as Db2サーバー
+    participant CICS as Rust CICSホスト
 
-    Note over Program, Db2: 【フェーズ 1: 接続と認証 (初回実行時)】
-    Program->>Bridge: CALL "DB2SQL_EXEC" (最初のSQL文)
-    Bridge->>Bridge: connect_db2() を呼び出し
-    Bridge->>Bridge: 環境変数検証 (DB2_USER, DB2_PASSWORD, DB2_HOST, DB2_PORT, DB2_DATABASE)
-    Bridge->>CLI: SQLAllocHandle(SQL_HANDLE_ENV, &db2_env)
+    Note over Program, Db2: 1. 接続と認証
+    Program->>Bridge: CALL DB2SQL_EXEC
+    Bridge->>Bridge: connect_db2
+    Bridge->>CLI: SQLAllocHandle ENV
     CLI-->>Bridge: SQL_SUCCESS
-    Bridge->>CLI: SQLAllocHandle(SQL_HANDLE_DBC, &db2_connection)
+    Bridge->>CLI: SQLAllocHandle DBC
     CLI-->>Bridge: SQL_SUCCESS
-    Bridge->>CLI: SQLDriverConnect(connection_string: "DATABASE=...;UID=...;PWD=...")
-    CLI->>Db2: TCPハンドシェイク & ユーザー認証 (ポート 50000)
-    Db2-->>CLI: 認証成功・接続確立
+    Bridge->>CLI: SQLDriverConnect
+    CLI->>Db2: TCP接続と認証 Port 50000
+    Db2-->>CLI: 認証成功
     CLI-->>Bridge: SQL_SUCCESS
 
-    Note over Bridge, Db2: 【フェーズ 2: トランザクション制御設定 (AutoCommit OFF)】
-    Bridge->>CLI: SQLSetConnectAttr(SQL_ATTR_AUTOCOMMIT, SQL_AUTOCOMMIT_OFF)
-    CLI->>Db2: SET AUTOCOMMIT = OFF
+    Note over Bridge, Db2: 2. トランザクション制御設定
+    Bridge->>CLI: SQLSetConnectAttr AUTOCOMMIT_OFF
+    CLI->>Db2: SET AUTOCOMMIT OFF
     Db2-->>CLI: OK
-    opt DB2_SCHEMA 設定あり
-        Bridge->>CLI: SQLExecDirect("SET CURRENT SCHEMA <schema>")
+    opt DB2_SCHEMA設定あり
+        Bridge->>CLI: SQLExecDirect SET CURRENT SCHEMA
         CLI->>Db2: SET CURRENT SCHEMA
         Db2-->>CLI: OK
     end
 
-    Note over Program, Db2: 【フェーズ 3: クエリの準備とパラメータバインド】
-    Bridge->>CLI: SQLAllocHandle(SQL_HANDLE_STMT, &statement)
+    Note over Program, Db2: 3. クエリ準備とパラメータバインド
+    Bridge->>CLI: SQLAllocHandle STMT
     CLI-->>Bridge: SQL_SUCCESS
-    Bridge->>CLI: SQLPrepare(statement, "INSERT INTO ACCOUNT VALUES (?, ?, ?)")
-    CLI->>Db2: SQL文解析・アクセスプラン作成 (キャッシュ)
+    Bridge->>CLI: SQLPrepare INSERT INTO
+    CLI->>Db2: SQL文解析とアクセスプラン作成
     Db2-->>CLI: 準備完了
-    Note over Bridge: COBOL引数の型検査 (COMP-5, COMP-3, PIC X, NULL指示子)
-    Bridge->>CLI: SQLBindParameter(Param 1, SQL_DECIMAL, buffers[0], ...)
-    Bridge->>CLI: SQLBindParameter(Param 2, SQL_VARCHAR, buffers[1], ...)
-    Bridge->>CLI: SQLBindParameter(Param 3, SQL_VARCHAR, buffers[2], &indicators[2])
+    Note over Bridge: COBOL引数検査と型変換
+    Bridge->>CLI: SQLBindParameter Param 1
+    Bridge->>CLI: SQLBindParameter Param 2
+    Bridge->>CLI: SQLBindParameter Param 3
 
-    Note over Program, Db2: 【フェーズ 4: クエリ実行 (暗黙的トランザクション開始)】
-    Bridge->>CLI: SQLExecute(statement)
+    Note over Program, Db2: 4. クエリ実行 暗黙的トランザクション開始
+    Bridge->>CLI: SQLExecute statement
     CLI->>Db2: 実行要求送信
-    Note over Db2: ★ Db2サーバー内でトランザクションが自動開始される<br/>対象行の排他ロック (X Lock) を獲得
-    Db2-->>CLI: 実行成功 (1行挿入完了)
+    Note over Db2: 暗黙的トランザクション開始と行排他ロック獲得
+    Db2-->>CLI: 実行成功 1行挿入
     CLI-->>Bridge: SQL_SUCCESS
-    Bridge->>CLI: SQLFreeHandle(SQL_HANDLE_STMT, statement)
-    Bridge->>Program: SQLCODE = 0, SQLSTATE = "00000" をSQLCAに設定してリターン
+    Bridge->>CLI: SQLFreeHandle STMT
+    Bridge->>Program: SQLCODE 0 をSQLCAに設定
 
-    Note over Program, Db2: 【フェーズ 5: 単一行 SELECT ... INTO の実行】
-    Program->>Bridge: CALL "DB2SQL_EXEC" (SELECT BALANCE INTO :HV-BAL FROM ...)
-    Bridge->>CLI: SQLAllocHandle + SQLPrepare("SELECT BALANCE FROM ... WHERE ID = ?")
-    Bridge->>CLI: SQLBindParameter(WHERE条件)
-    Bridge->>CLI: SQLExecute()
-    CLI->>Db2: 検索実行 (S Lock 獲得)
+    Note over Program, Db2: 5. 単一行 SELECT INTO の実行
+    Program->>Bridge: CALL DB2SQL_EXEC SELECT INTO
+    Bridge->>CLI: SQLAllocHandle と SQLPrepare
+    Bridge->>CLI: SQLBindParameter
+    Bridge->>CLI: SQLExecute
+    CLI->>Db2: 検索実行 S Lock 獲得
     Db2-->>CLI: 検索結果セット準備
-    Bridge->>CLI: SQLFetch() (1行目取得)
+    Bridge->>CLI: SQLFetch 1行目取得
     CLI-->>Bridge: 1行目データ返却
-    Bridge->>Bridge: COBOL出力変数 HV-BAL に値を格納
-    Bridge->>CLI: SQLFetch() (2行目存在チェック)
+    Bridge->>Bridge: COBOL出力変数に値を格納
+    Bridge->>CLI: SQLFetch 2行目チェック
     CLI-->>Bridge: SQL_NO_DATA
-    Note over Bridge: 2行目がないことを確認 (多重行ヒットエラー -811 の防止)
-    Bridge->>Program: SQLCODE = 0, SQLSTATE = "00000"
+    Note over Bridge: 2行目がないことを確認 多重行エラー -811 防止
+    Bridge->>Program: SQLCODE 0 をSQLCAに設定
 
-    Note over Program, CICS: 【フェーズ 6: コミット処理 (明示的またはCICS連携)】
-    alt パターン A: COBOLによる明示的 COMMIT
-        Program->>Bridge: CALL "DB2SQL_COMMIT"
-        Bridge->>CLI: SQLEndTran(SQL_HANDLE_DBC, db2_connection, SQL_COMMIT)
+    Note over Program, CICS: 6. コミット処理
+    alt パターンA COBOLによる明示的 COMMIT
+        Program->>Bridge: CALL DB2SQL_COMMIT
+        Bridge->>CLI: SQLEndTran SQL_COMMIT
         CLI->>Db2: COMMIT WORK
-        Db2-->>CLI: コミット完了 (WALフラッシュ、ロック全解放)
-        Bridge->>Program: SQLCODE = 0, SQLSTATE = "00000"
-    else パターン B: CICSオンラインタスク正常終了 (Rust連携)
-        Program->>CICS: EXEC CICS RETURN (業務終了)
-        CICS->>Bridge: COBCICS_RETURN() -> DB2SQL_END_TASK(commit=1)
-        Bridge->>CLI: SQLEndTran(SQL_HANDLE_DBC, db2_connection, SQL_COMMIT)
+        Db2-->>CLI: コミット完了 ロック解放
+        Bridge->>Program: SQLCODE 0 を返却
+    else パターンB CICSオンラインタスク正常終了
+        Program->>CICS: EXEC CICS RETURN
+        CICS->>Bridge: COBCICS_RETURN DB2SQL_END_TASK 1
+        Bridge->>CLI: SQLEndTran SQL_COMMIT
         CLI->>Db2: COMMIT WORK
         Db2-->>CLI: コミット完了
-        Bridge->>CLI: SQLDisconnect() & SQLFreeHandle()
-    else パターン C: CICS ABEND / エラーロールバック (Rust連携)
-        Program->>CICS: EXEC CICS ABEND (異常終了)
-        CICS->>Bridge: COBCICS_ABEND() -> DB2SQL_END_TASK(commit=0)
-        Bridge->>CLI: SQLEndTran(SQL_HANDLE_DBC, db2_connection, SQL_ROLLBACK)
+        Bridge->>CLI: SQLDisconnect
+    else パターンC CICS ABENDロールバック
+        Program->>CICS: EXEC CICS ABEND
+        CICS->>Bridge: COBCICS_ABEND DB2SQL_END_TASK 0
+        Bridge->>CLI: SQLEndTran SQL_ROLLBACK
         CLI->>Db2: ROLLBACK WORK
-        Db2-->>CLI: ロールバック完了 (変更取り消し、ロック解放)
-        Bridge->>CLI: SQLDisconnect() & SQLFreeHandle()
+        Db2-->>CLI: ロールバック完了
+        Bridge->>CLI: SQLDisconnect
     end
 ```
 
