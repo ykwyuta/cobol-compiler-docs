@@ -113,6 +113,7 @@
 ├── README.md                # 本ドキュメント（プロジェクト概要・比較研究）
 ├── docs/                    # アーキテクチャ解説・比較ドキュメント群
 │   ├── cobol-syntax-compliance-matrix.md # z/OS COBOL 構文対応状況マトリクス
+│   ├── pli-syntax-compliance-matrix.md   # z/OS PL/I 構文対応状況マトリクス
 │   ├── cobol-on-java/       # cobol-on-java に関する調査・設計記録
 │   ├── gnucobol/            # GnuCOBOL (zosplus) アーキテクチャ解説
 │   └── zeus/                # Zeus アーキテクチャ解説
