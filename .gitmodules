@@ -1,0 +1,9 @@
+[submodule "resource/Zeus"]
+	path = resource/Zeus
+	url = git@github.com:ykwyuta/Zeus.git
+[submodule "resource/gnucobol-zosplus"]
+	path = resource/gnucobol-zosplus
+	url = git@github.com:ykwyuta/gnucobol-zosplus.git
+[submodule "resource/cobol-on-java"]
+	path = resource/cobol-on-java
+	url = git@github.com:ykwyuta/cobol-on-java.git
